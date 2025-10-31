@@ -1,7 +1,9 @@
 const {Category} = require('../models/category');
 const express = require('express');
 const router = express.Router();
+const { authorize_admin } = require('../helpers/authorize');
 
+// PUBLIC - Anyone can view categories
 router.get(`/`, async (req, res) =>{
     const categoryList = await Category.find();
 
@@ -11,6 +13,7 @@ router.get(`/`, async (req, res) =>{
     res.status(200).send(categoryList);
 })
 
+// PUBLIC - Anyone can view single category
 router.get('/:id', async(req,res)=>{
     const category = await Category.findById(req.params.id);
 
@@ -20,7 +23,8 @@ router.get('/:id', async(req,res)=>{
     res.status(200).send(category);
 })
 
-router.post('/', async (req,res)=>{
+// ADMIN ONLY - Create category
+router.post('/', authorize_admin(), async (req,res)=>{
     let category = new Category({
         name: req.body.name,
         icon: req.body.icon,
@@ -34,7 +38,8 @@ router.post('/', async (req,res)=>{
     res.send(category);
 })
 
-router.put('/:id',async (req, res)=> {
+// ADMIN ONLY - Update category
+router.put('/:id', authorize_admin(), async (req, res)=> {
     const category = await Category.findByIdAndUpdate(
         req.params.id,
         {
@@ -51,7 +56,8 @@ router.put('/:id',async (req, res)=> {
     res.send(category);
 })
 
-router.delete('/:id', (req, res)=>{
+// ADMIN ONLY - Delete category
+router.delete('/:id', authorize_admin(), (req, res)=>{
     Category.findByIdAndRemove(req.params.id).then(category =>{
         if(category) {
             return res.status(200).json({success: true, message: 'the category is deleted!'})

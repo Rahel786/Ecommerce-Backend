@@ -1,9 +1,14 @@
+// ============================================
+// FILE: routes/orders.js (UPDATED WITH RBAC)
+// ============================================
 const {Order} = require('../models/order');
 const express = require('express');
 const { OrderItem } = require('../models/order-item');
 const router = express.Router();
+const { authorize_admin, authorize_user } = require('../helpers/authorize');
 
-router.get(`/`, async (req, res) =>{
+// ADMIN ONLY - Get all orders
+router.get(`/`, authorize_admin(), async (req, res) =>{
     const orderList = await Order.find().populate('user', 'name').sort({'dateOrdered': -1});
 
     if(!orderList) {
@@ -12,7 +17,8 @@ router.get(`/`, async (req, res) =>{
     res.send(orderList);
 })
 
-router.get(`/:id`, async (req, res) =>{
+// USER OR ADMIN - Get single order (users can only get their own orders)
+router.get(`/:id`, authorize_user(), async (req, res) =>{
     const order = await Order.findById(req.params.id)
     .populate('user', 'name')
     .populate({ 
@@ -21,12 +27,33 @@ router.get(`/:id`, async (req, res) =>{
         });
 
     if(!order) {
-        res.status(500).json({success: false})
-    } 
+        return res.status(404).json({success: false, message: 'Order not found'})
+    }
+
+    // Check if user is requesting their own order or is admin
+    const orderUserId = order.user._id.toString();
+    const currentUserId = req.auth.userId;
+    const isAdmin = req.auth.isAdmin;
+
+    if (!isAdmin && orderUserId !== currentUserId) {
+        return res.status(403).json({
+            success: false,
+            message: 'Forbidden - You can only access your own orders'
+        });
+    }
+    
     res.send(order);
 })
 
-router.post('/', async (req,res)=>{
+// AUTHENTICATED USER - Create order (any logged-in user)
+router.post('/', authorize_user(), async (req,res)=>{
+    // Ensure user can only create orders for themselves
+    const currentUserId = req.auth.userId;
+    const isAdmin = req.auth.isAdmin;
+
+    // If not admin, force the order to be for the current user
+    const orderUserId = isAdmin ? req.body.user : currentUserId;
+
     const orderItemsIds = Promise.all(req.body.orderItems.map(async (orderItem) =>{
         let newOrderItem = new OrderItem({
             quantity: orderItem.quantity,
@@ -57,7 +84,7 @@ router.post('/', async (req,res)=>{
         phone: req.body.phone,
         status: req.body.status,
         totalPrice: totalPrice,
-        user: req.body.user,
+        user: orderUserId,
     })
     order = await order.save();
 
@@ -67,7 +94,8 @@ router.post('/', async (req,res)=>{
     res.send(order);
 })
 
-router.put('/:id',async (req, res)=> {
+// ADMIN ONLY - Update order status
+router.put('/:id', authorize_admin(), async (req, res)=> {
     const order = await Order.findByIdAndUpdate(
         req.params.id,
         {
@@ -82,7 +110,8 @@ router.put('/:id',async (req, res)=> {
     res.send(order);
 })
 
-router.delete('/:id', async (req, res)=>{
+// ADMIN ONLY - Delete order
+router.delete('/:id', authorize_admin(), async (req, res)=>{
     try {
         const order = await Order.findByIdAndRemove(req.params.id);
         
@@ -101,7 +130,8 @@ router.delete('/:id', async (req, res)=>{
     }
 })
 
-router.get('/get/totalsales', async (req, res)=> {
+// ADMIN ONLY - Get total sales
+router.get('/get/totalsales', authorize_admin(), async (req, res)=> {
     const totalSales= await Order.aggregate([
         { $group: { _id: null , totalsales : { $sum : '$totalPrice'}}}
     ])
@@ -113,7 +143,8 @@ router.get('/get/totalsales', async (req, res)=> {
     res.send({totalsales: totalSales.pop().totalsales})
 })
 
-router.get(`/get/count`, async (req, res) =>{
+// ADMIN ONLY - Get order count
+router.get(`/get/count`, authorize_admin(), async (req, res) =>{
     const orderCount = await Order.countDocuments((count) => count)
 
     if(!orderCount) {
@@ -124,7 +155,20 @@ router.get(`/get/count`, async (req, res) =>{
     });
 })
 
-router.get(`/get/userorders/:userid`, async (req, res) =>{
+// USER OR ADMIN - Get user orders (users can only get their own)
+router.get(`/get/userorders/:userid`, authorize_user(), async (req, res) =>{
+    // Check if user is requesting their own orders or is admin
+    const requestedUserId = req.params.userid;
+    const currentUserId = req.auth.userId;
+    const isAdmin = req.auth.isAdmin;
+
+    if (!isAdmin && requestedUserId !== currentUserId) {
+        return res.status(403).json({
+            success: false,
+            message: 'Forbidden - You can only access your own orders'
+        });
+    }
+
     const userOrderList = await Order.find({user: req.params.userid}).populate({ 
         path: 'orderItems', populate: {
             path : 'product', populate: 'category'} 

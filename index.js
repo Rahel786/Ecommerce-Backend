@@ -1,3 +1,6 @@
+// ============================================
+// FILE: index.js (UPDATED - MIDDLEWARE ORDER)
+// ============================================
 const express = require('express');
 const app = express();
 const morgan = require('morgan');
@@ -6,16 +9,17 @@ const cors = require('cors');
 require('dotenv/config');
 const authJwt = require('./helpers/jwt');
 const errorHandler = require('./helpers/error-handler');
-const PORT = process.env.PORT || 3000;
+
 app.use(cors());
-app.options(/.*/, cors());
+app.options('*', cors());
 
-
-//middleware
+//middleware - ORDER MATTERS!
 app.use(express.json());
 app.use(morgan('tiny'));
-app.use(authJwt());
 app.use('/public/uploads', express.static(__dirname + '/public/uploads'));
+
+// Apply JWT authentication BEFORE routes
+app.use(authJwt());
 
 //Routes
 const categoriesRoutes = require('./routes/categories');
@@ -29,9 +33,16 @@ app.use(`${api}/categories`, categoriesRoutes);
 app.use(`${api}/products`, productsRoutes);
 app.use(`${api}/users`, usersRoutes);
 app.use(`${api}/orders`, ordersRoutes);
+
+// Apply error handler AFTER routes
 app.use(errorHandler);
+
 //Database
-mongoose.connect(process.env.CONNECTION_STRING)
+mongoose.connect(process.env.CONNECTION_STRING, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+    dbName: 'eshop-database'
+})
 .then(()=>{
     console.log('Database Connection is ready...')
 })
@@ -40,7 +51,7 @@ mongoose.connect(process.env.CONNECTION_STRING)
 })
 
 //Server
-const server = app.listen(PORT, ()=>{
+const server = app.listen(3000, ()=>{
     console.log('server is running http://localhost:3000');
 })
 

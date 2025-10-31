@@ -1,9 +1,13 @@
+// ============================================
+// FILE: routes/products.js (UPDATED WITH RBAC)
+// ============================================
 const {Product} = require('../models/product');
 const express = require('express');
 const { Category } = require('../models/category');
 const router = express.Router();
 const mongoose = require('mongoose');
 const multer = require('multer');
+const { authorize_admin } = require('../helpers/authorize');
 
 const FILE_TYPE_MAP = {
     'image/png': 'png',
@@ -31,6 +35,7 @@ const storage = multer.diskStorage({
   
 const uploadOptions = multer({ storage: storage })
 
+// PUBLIC - Get all products
 router.get(`/`, async (req, res) =>{
     let filter = {};
     if(req.query.categories)
@@ -46,6 +51,7 @@ router.get(`/`, async (req, res) =>{
     res.send(productList);
 })
 
+// PUBLIC - Get single product
 router.get(`/:id`, async (req, res) =>{
     const product = await Product.findById(req.params.id).populate('category');
 
@@ -55,7 +61,8 @@ router.get(`/:id`, async (req, res) =>{
     res.send(product);
 })
 
-router.post(`/`, uploadOptions.single('image'), async (req, res) =>{
+// ADMIN ONLY - Create product
+router.post(`/`, authorize_admin(), uploadOptions.single('image'), async (req, res) =>{
     const category = await Category.findById(req.body.category);
     if(!category) return res.status(400).send('Invalid Category')
 
@@ -68,7 +75,7 @@ router.post(`/`, uploadOptions.single('image'), async (req, res) =>{
         name: req.body.name,
         description: req.body.description,
         richDescription: req.body.richDescription,
-        image: `${basePath}${fileName}`,// "http://localhost:3000/public/upload/image-2323232"
+        image: `${basePath}${fileName}`,
         brand: req.body.brand,
         price: req.body.price,
         category: req.body.category,
@@ -86,7 +93,8 @@ router.post(`/`, uploadOptions.single('image'), async (req, res) =>{
     res.send(product);
 })
 
-router.put('/:id',async (req, res)=> {
+// ADMIN ONLY - Update product
+router.put('/:id', authorize_admin(), async (req, res)=> {
     if(!mongoose.isValidObjectId(req.params.id)) {
        return res.status(400).send('Invalid Product Id')
     }
@@ -117,7 +125,8 @@ router.put('/:id',async (req, res)=> {
     res.send(product);
 })
 
-router.delete('/:id', (req, res)=>{
+// ADMIN ONLY - Delete product
+router.delete('/:id', authorize_admin(), (req, res)=>{
     Product.findByIdAndRemove(req.params.id).then(product =>{
         if(product) {
             return res.status(200).json({success: true, message: 'the product is deleted!'})
@@ -129,6 +138,7 @@ router.delete('/:id', (req, res)=>{
     })
 })
 
+// PUBLIC - Get product count
 router.get(`/get/count`, async (req, res) =>{
     const productCount = await Product.countDocuments((count) => count)
 
@@ -140,6 +150,7 @@ router.get(`/get/count`, async (req, res) =>{
     });
 })
 
+// PUBLIC - Get featured products
 router.get(`/get/featured/:count`, async (req, res) =>{
     const count = req.params.count ? req.params.count : 0
     const products = await Product.find({isFeatured: true}).limit(+count);
@@ -150,8 +161,10 @@ router.get(`/get/featured/:count`, async (req, res) =>{
     res.send(products);
 })
 
+// ADMIN ONLY - Update gallery images
 router.put(
-    '/gallery-images/:id', 
+    '/gallery-images/:id',
+    authorize_admin(),
     uploadOptions.array('images', 10), 
     async (req, res)=> {
         if(!mongoose.isValidObjectId(req.params.id)) {
@@ -182,4 +195,4 @@ router.put(
     }
 )
 
-module.exports =router;
+module.exports = router;
